@@ -26,13 +26,18 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const junkyardId = searchParams.get('junkyardId') || undefined;
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    const vehicles = await getStoredVehicles(junkyardId);
+    const result = await getStoredVehicles(junkyardId, page, limit);
 
     return NextResponse.json({
       success: true,
-      vehicles,
-      total: vehicles?.length || 0,
+      vehicles: result.vehicles,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
     });
   } catch (error) {
     console.error('Get vehicles error:', error);
@@ -41,6 +46,9 @@ export async function GET(request: NextRequest) {
         success: false,
         vehicles: [],
         total: 0,
+        page: 1,
+        limit: 50,
+        totalPages: 0,
         error: error instanceof Error ? error.message : 'Internal server error',
       },
       { status: 500 }

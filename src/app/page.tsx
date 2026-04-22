@@ -51,6 +51,11 @@ export default function Home() {
   const [totalResults, setTotalResults] = useState(0);
   const [vehiclesStored, setVehiclesStored] = useState(0);
 
+  // Pagination state for junkyard inventory
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [pageLimit] = useState(50);
+
   // Car search specific state
   const [carYear, setCarYear] = useState('');
   const [carMake, setCarMake] = useState('');
@@ -166,14 +171,16 @@ export default function Home() {
     }
   };
 
-  const fetchVehicles = async () => {
+  const fetchVehicles = async (page: number = currentPage) => {
     try {
-      const response = await fetch('/api/junkyard-scrape');
+      const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
       const data = await response.json();
 
       if (data.success) {
         setResults(data.vehicles);
         setTotalResults(data.total);
+        setTotalPages(data.totalPages);
+        setCurrentPage(data.page);
       }
     } catch (err) {
       console.error('Failed to fetch vehicles:', err);
@@ -182,9 +189,27 @@ export default function Home() {
 
   useEffect(() => {
     if (searchType === 'junkyard') {
-      fetchVehicles();
+      setCurrentPage(1);
+      fetchVehicles(1);
     }
   }, [searchType]);
+
+  // Helper function to extract stock number from notes
+  const extractStockNumber = (notes?: string): string => {
+    if (!notes) return '-';
+    const stockMatch = notes.match(/Stock:\s*(\S+)/i);
+    return stockMatch ? stockMatch[1] : '-';
+  };
+
+  // Helper function to format available date
+  const formatDate = (dateStr?: string): string => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -443,10 +468,8 @@ export default function Home() {
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">Make</th>
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">Model</th>
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">VIN</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Mileage</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Color</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Engine</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Transmission</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Stock #</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Available Date</th>
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">Status</th>
                         </tr>
                       </thead>
@@ -462,12 +485,8 @@ export default function Home() {
                             <td className="p-4 text-white">{vehicle.make}</td>
                             <td className="p-4 text-white">{vehicle.model}</td>
                             <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
-                            <td className="p-4 text-slate-400">
-                              {vehicle.mileage ? vehicle.mileage.toLocaleString() : '-'}
-                            </td>
-                            <td className="p-4 text-slate-400">{vehicle.color || '-'}</td>
-                            <td className="p-4 text-slate-400">{vehicle.engine || '-'}</td>
-                            <td className="p-4 text-slate-400">{vehicle.transmission || '-'}</td>
+                            <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
+                            <td className="p-4 text-slate-400">{formatDate(vehicle.scraped_at || vehicle.created_at)}</td>
                             <td className="p-4">
                               <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
                                 In Stock
@@ -477,6 +496,57 @@ export default function Home() {
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between px-4 py-3 border-t border-slate-600">
+                        <div className="text-sm text-slate-400">
+                          Showing {(currentPage - 1) * pageLimit + 1} to{' '}
+                          {Math.min(currentPage * pageLimit, totalResults)} of {totalResults} vehicles
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => fetchVehicles(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Previous
+                          </button>
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => fetchVehicles(pageNum)}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                                  currentPage === pageNum
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                          <button
+                            onClick={() => fetchVehicles(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

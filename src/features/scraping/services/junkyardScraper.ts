@@ -120,14 +120,26 @@ export async function scrapeAndStoreWrenchApart(userId: string): Promise<Scrapin
   }
 }
 
-export async function getStoredVehicles(junkyardId?: string) {
+export async function getStoredVehicles(junkyardId?: string, page: number = 1, limit: number = 50) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  // Get total count
+  const { count, error: countError } = await supabase
+    .from('junkyard_vehicles')
+    .select('*', { count: 'exact', head: true });
+
+  if (countError) {
+    throw new Error(`Failed to count vehicles: ${countError.message}`);
+  }
 
   let query = supabase
     .from('junkyard_vehicles')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(50);
+    .range(from, to);
 
   if (junkyardId) {
     query = query.eq('junkyard_id', junkyardId);
@@ -139,5 +151,11 @@ export async function getStoredVehicles(junkyardId?: string) {
     throw new Error(`Failed to fetch vehicles: ${error.message}`);
   }
 
-  return data;
+  return {
+    vehicles: data,
+    total: count || 0,
+    page,
+    limit,
+    totalPages: Math.ceil((count || 0) / limit),
+  };
 }
