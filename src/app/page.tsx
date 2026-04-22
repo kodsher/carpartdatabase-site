@@ -28,6 +28,7 @@ export interface Vehicle {
   source_url?: string;
   scraped_at?: string;
   created_at: string;
+  date_available?: string;
 }
 
 export interface CarSearchResult {
@@ -486,7 +487,7 @@ export default function Home() {
                             <td className="p-4 text-white">{vehicle.model}</td>
                             <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
                             <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
-                            <td className="p-4 text-slate-400">{formatDate(vehicle.scraped_at || vehicle.created_at)}</td>
+                            <td className="p-4 text-slate-400">{formatDate(vehicle.date_available)}</td>
                             <td className="p-4">
                               <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
                                 In Stock

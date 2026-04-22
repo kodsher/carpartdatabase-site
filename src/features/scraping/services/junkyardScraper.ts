@@ -98,6 +98,7 @@ export async function scrapeAndStoreWrenchApart(userId: string): Promise<Scrapin
             notes: `Stock: ${vehicle.stockNumber || 'N/A'}, Location: ${vehicle.location || 'N/A'}`,
             source_url: vehicle.partsUrl || 'https://api.wrenchapart.com/v1/vehicles?makeId=0',
             scraped_at: new Date().toISOString(),
+            date_available: vehicle.arrivalDate ? new Date(vehicle.arrivalDate).toISOString() : null,
           });
 
         if (!insertError) {
