@@ -18,6 +18,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { command } = body;
 
+    console.log('[JOBS API] Received request with command:', command);
+
     if (!command) {
       return NextResponse.json(
         { error: 'Missing required field: command' },
@@ -27,6 +29,8 @@ export async function POST(request: NextRequest) {
 
     // Insert the job into Supabase
     const supabase = getSupabaseClient();
+    console.log('[JOBS API] Inserting job with command:', command);
+
     const { data, error } = await supabase
       .from('jobs')
       .insert({
@@ -35,6 +39,8 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single();
+
+    console.log('[JOBS API] Insert result:', error || 'Success', data?.id);
 
     if (error) {
       console.error('Supabase error:', error);

@@ -92,23 +92,32 @@ export default function Home() {
       setCarSearchResult(null);
 
       try {
-        const params = new URLSearchParams({
-          year: carYear,
-          make: carMake,
-          model: carModel,
-          part: carPart,
+        // Create a job in the jobs table with the command to run the puppeteer scraper
+        const command = `node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js ${carYear} ${carMake} ${carModel} "${carPart}"`;
+
+        const response = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command }),
         });
 
-        const response = await fetch(`/api/car-search?${params.toString()}`);
         const data = await response.json();
 
         if (data.success) {
-          setCarSearchResult(data);
+          setCarSearchResult({
+            success: true,
+            searchQuery: `${carYear} ${carMake} ${carModel} ${carPart}`,
+            resultCount: 0,
+            searchTerm: `${carYear} ${carMake} ${carModel} ${carPart}`,
+            ebayUrl: `https://www.ebay.com/sch/i.html?_nkw=${carYear}+${carMake}+${carModel}+${carPart.replace(/ /g, '+')}`,
+            titles: [],
+          });
+          await fetchRecentJobs();
         } else {
-          setError(data.error || 'Search failed');
+          setError(data.error || 'Failed to create job');
         }
       } catch (err) {
-        setError('Failed to search. Please try again.');
+        setError('Failed to create job. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -516,17 +525,29 @@ export default function Home() {
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8">
           <h3 className="text-lg font-semibold text-white mb-4">Supabase Job Queue</h3>
           <div className="space-y-4">
+            <div className="p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
+              <p className="text-sm text-blue-300">
+                <strong>Tip:</strong> Use the <em>Car Search</em> form above to automatically create scraper jobs.
+                This field is for custom commands.
+              </p>
+            </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-2">Command to run</label>
+              <label className="block text-sm text-slate-400 mb-2">Custom command to run</label>
               <input
                 type="text"
                 value={jobCommand}
                 onChange={(e) => setJobCommand(e.target.value)}
-                placeholder='echo "Hello World!"'
+                placeholder='node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js 2015 honda civic "center console"'
                 className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
               />
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => setJobCommand('node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js 2015 honda civic "center console"')}
+                className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm font-medium"
+              >
+                Fill Scraper Template
+              </button>
               <button
                 onClick={handleCreateJob}
                 disabled={jobLoading}
