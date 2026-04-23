@@ -29,6 +29,7 @@ export interface Vehicle {
   scraped_at?: string;
   created_at: string;
   date_available?: string;
+  junkyard_id?: string;
 }
 
 export interface CarSearchResult {
@@ -200,6 +201,13 @@ export default function Home() {
     if (!notes) return '-';
     const stockMatch = notes.match(/Stock:\s*(\S+)/i);
     return stockMatch ? stockMatch[1] : '-';
+  };
+
+  // Helper function to extract yard from notes
+  const extractYard = (notes?: string): string => {
+    if (!notes) return '-';
+    const yardMatch = notes.match(/Location:\s*([^\,]+)/i);
+    return yardMatch ? yardMatch[1].trim() : '-';
   };
 
   // Helper function to format available date
@@ -471,7 +479,7 @@ export default function Home() {
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">VIN</th>
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">Stock #</th>
                           <th className="text-left p-4 text-sm font-semibold text-slate-300">Available Date</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Status</th>
+                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Yard</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -488,11 +496,7 @@ export default function Home() {
                             <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
                             <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
                             <td className="p-4 text-slate-400">{formatDate(vehicle.date_available)}</td>
-                            <td className="p-4">
-                              <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                                In Stock
-                              </span>
-                            </td>
+                            <td className="p-4 text-slate-300">{extractYard(vehicle.notes)}</td>
                           </tr>
                         ))}
                       </tbody>
