@@ -20,4 +20,5 @@ export const TABLES = {
   PARTS: 'parts',
   USERS: 'users',
   COMPATIBILITY: 'compatibility',
+  JOBS: 'jobs',
 } as const;

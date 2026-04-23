@@ -66,6 +66,18 @@ export default function Home() {
   const [carPart, setCarPart] = useState('');
   const [carSearchResult, setCarSearchResult] = useState<CarSearchResult | null>(null);
 
+  // Test button state
+  const [testWord, setTestWord] = useState('');
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  // Job creation state
+  const [jobCommand, setJobCommand] = useState('echo "Hello from Supabase!"');
+  const [jobLoading, setJobLoading] = useState(false);
+  const [jobResult, setJobResult] = useState<any>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -189,6 +201,71 @@ export default function Home() {
       console.error('Failed to fetch vehicles:', err);
     }
   };
+
+  const handleTestButton = async () => {
+    setTestLoading(true);
+    setTestError(null);
+    setTestWord('');
+
+    try {
+      const response = await fetch('http://localhost:3001/api/word');
+      if (!response.ok) {
+        throw new Error('Failed to connect to local server. Run `node ~/test-server-simple.js` in a terminal.');
+      }
+      const data = await response.json();
+      if (data.word) {
+        setTestWord(data.word);
+      } else {
+        throw new Error('No word received from server');
+      }
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : 'Failed to fetch word');
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const handleCreateJob = async () => {
+    setJobLoading(true);
+    setJobError(null);
+    setJobResult(null);
+
+    try {
+      const response = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: jobCommand }),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setJobResult(data.job);
+        await fetchRecentJobs();
+      } else {
+        throw new Error(data.error || 'Failed to create job');
+      }
+    } catch (err) {
+      setJobError(err instanceof Error ? err.message : 'Failed to create job');
+    } finally {
+      setJobLoading(false);
+    }
+  };
+
+  const fetchRecentJobs = async () => {
+    try {
+      const response = await fetch('/api/jobs?limit=5');
+      const data = await response.json();
+      if (data.success) {
+        setRecentJobs(data.jobs);
+      }
+    } catch (err) {
+      console.error('Failed to fetch jobs:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecentJobs();
+  }, []);
 
   useEffect(() => {
     if (searchType === 'junkyard') {
@@ -406,6 +483,117 @@ export default function Home() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Test Button Section */}
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4">Local Server Test</h3>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleTestButton}
+              disabled={testLoading}
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testLoading ? 'Connecting...' : 'Test Local Server'}
+            </button>
+            {testWord && (
+              <div className="px-4 py-2 bg-green-600/20 border border-green-600 rounded-lg">
+                <span className="text-green-400 font-medium">Word: {testWord}</span>
+              </div>
+            )}
+          </div>
+          {testError && (
+            <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+              {testError}
+            </div>
+          )}
+          <p className="mt-3 text-sm text-slate-400">
+            This button connects to the backend API and returns a random test word.
+          </p>
+        </div>
+
+        {/* Job Creation Section */}
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4">Supabase Job Queue</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-2">Command to run</label>
+              <input
+                type="text"
+                value={jobCommand}
+                onChange={(e) => setJobCommand(e.target.value)}
+                placeholder='echo "Hello World!"'
+                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleCreateJob}
+                disabled={jobLoading}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {jobLoading ? 'Creating Job...' : 'Create Job'}
+              </button>
+              <button
+                onClick={fetchRecentJobs}
+                className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors font-medium"
+              >
+                Refresh Jobs
+              </button>
+            </div>
+            {jobResult && (
+              <div className="p-4 bg-green-600/20 border border-green-600 rounded-lg">
+                <div className="text-green-400 font-medium mb-2">Job Created!</div>
+                <div className="text-sm text-slate-300">
+                  ID: <span className="font-mono">{jobResult.id}</span><br />
+                  Status: <span className="text-yellow-400">{jobResult.status}</span>
+                </div>
+              </div>
+            )}
+            {jobError && (
+              <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+                {jobError}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Jobs */}
+          {recentJobs.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-semibold text-slate-400 mb-3">Recent Jobs</h4>
+              <div className="space-y-2">
+                {recentJobs.map((job) => (
+                  <div key={job.id} className="p-3 bg-slate-900/50 border border-slate-700 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-xs text-slate-500">{job.id.slice(0, 8)}...</span>
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                        job.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                        job.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                        job.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                        'bg-red-500/20 text-red-400'
+                      }`}>
+                        {job.status}
+                      </span>
+                    </div>
+                    <div className="font-mono text-sm text-slate-300">{job.command}</div>
+                    {job.result && (
+                      <div className="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-400 whitespace-pre-wrap">
+                        {job.result}
+                      </div>
+                    )}
+                    {job.error && (
+                      <div className="mt-2 p-2 bg-red-900/20 rounded text-xs text-red-400 whitespace-pre-wrap">
+                        {job.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="mt-4 text-sm text-slate-400">
+            Create a job in Supabase that your local worker can pick up and execute via Realtime.
+          </p>
         </div>
 
         {/* Results */}
