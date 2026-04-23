@@ -25,6 +25,7 @@ export interface Vehicle {
   color?: string;
   mileage?: number;
   notes?: string;
+  yard?: string;
   source_url?: string;
   scraped_at?: string;
   created_at: string;
@@ -201,13 +202,6 @@ export default function Home() {
     if (!notes) return '-';
     const stockMatch = notes.match(/Stock:\s*(\S+)/i);
     return stockMatch ? stockMatch[1] : '-';
-  };
-
-  // Helper function to extract yard from notes
-  const extractYard = (notes?: string): string => {
-    if (!notes) return '-';
-    const yardMatch = notes.match(/Location:\s*([^\,]+)/i);
-    return yardMatch ? yardMatch[1].trim() : '-';
   };
 
   // Helper function to format available date
@@ -496,7 +490,7 @@ export default function Home() {
                             <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
                             <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
                             <td className="p-4 text-slate-400">{formatDate(vehicle.date_available)}</td>
-                            <td className="p-4 text-slate-300">{extractYard(vehicle.notes)}</td>
+                            <td className="p-4 text-slate-300">{vehicle.yard || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
