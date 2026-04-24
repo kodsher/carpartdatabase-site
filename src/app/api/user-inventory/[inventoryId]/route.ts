@@ -7,9 +7,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 // DELETE - Remove a vehicle from user's inventory
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { inventoryId: string } }
+  context: { params: Promise<{ inventoryId: string }> }
 ) {
   try {
+    const { inventoryId } = await context.params;
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -23,8 +25,6 @@ export async function DELETE(
     if (userError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
-
-    const { inventoryId } = params;
 
     // Delete the inventory item (only if it belongs to this user)
     const { error } = await supabase
@@ -50,9 +50,13 @@ export async function DELETE(
 // PATCH - Update notes on an inventory item
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { inventoryId: string } }
+  context: { params: Promise<{ inventoryId: string }> }
 ) {
   try {
+    const { inventoryId } = await context.params;
+    const body = await request.json();
+    const { notes } = body;
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -66,10 +70,6 @@ export async function PATCH(
     if (userError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
-
-    const { inventoryId } = params;
-    const body = await request.json();
-    const { notes } = body;
 
     // Update the inventory item (only if it belongs to this user)
     const { data, error } = await supabase
