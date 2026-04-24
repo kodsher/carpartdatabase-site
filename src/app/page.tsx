@@ -5,17 +5,6 @@ import { useAuth } from '@/components/AuthProvider';
 import AuthModal from '@/components/AuthModal';
 import Header from '@/components/layout/Header';
 
-export interface EbayItem {
-  title: string;
-  price: number;
-  condition: string;
-  url: string;
-  image: string;
-  seller?: string;
-  shipping?: string;
-  location?: string;
-}
-
 export interface Vehicle {
   id: string;
   make: string;
@@ -36,45 +25,39 @@ export interface Vehicle {
   junkyard_id?: string;
 }
 
-export interface CarSearchResult {
-  success: boolean;
-  searchQuery: string;
-  resultCount: number;
-  searchTerm: string;
-  ebayUrl: string;
-  titles: string[];
-  titlesFetched?: number;
-  totalPages?: number;
+interface PartSearch {
+  year: string;
+  make: string;
+  model: string;
+  part: string;
+}
+
+export interface Job {
+  id: string;
+  command: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  result?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
 }
 
 export default function Home() {
-  const [searchType, setSearchType] = useState<'database' | 'ebay' | 'junkyard' | 'car'>('car');
-  const [query, setQuery] = useState('');
+  const [searchType, setSearchType] = useState<'junkyard' | 'car'>('car');
   const [loading, setLoading] = useState(false);
-  const [scraping, setScraping] = useState(false);
-  const [results, setResults] = useState<EbayItem[] | Vehicle[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [totalResults, setTotalResults] = useState(0);
-  const [vehiclesStored, setVehiclesStored] = useState(0);
-
-  // Pagination state for junkyard inventory
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [pageLimit] = useState(50);
+  const [carSearchResult, setCarSearchResult] = useState<any>(null);
 
   // Car search specific state
   const [carYear, setCarYear] = useState('');
   const [carMake, setCarMake] = useState('');
   const [carModel, setCarModel] = useState('');
   const [carPart, setCarPart] = useState('');
-  const [carSearchResult, setCarSearchResult] = useState<CarSearchResult | null>(null);
 
-  // Job creation state
-  const [jobCommand, setJobCommand] = useState('echo "Hello from Supabase!"');
-  const [jobLoading, setJobLoading] = useState(false);
-  const [jobResult, setJobResult] = useState<any>(null);
-  const [jobError, setJobError] = useState<string | null>(null);
-  const [recentJobs, setRecentJobs] = useState<any[]>([]);
+  // Jobs state
+  const [recentJobs, setRecentJobs] = useState<Job[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
 
   // Auth state
   const { user, signOut } = useAuth();
@@ -95,8 +78,6 @@ export default function Home() {
       setCarSearchResult(null);
 
       try {
-        // Create a job in the jobs table with the command to run the puppeteer scraper
-        // Use environment variable for scraper path, or default to local path
         const scraperPath = process.env.NEXT_PUBLIC_SCRAPER_PATH || '/Users/admin/Desktop/puppeteer/ebay-scraper-csv.js';
         const command = `node ${scraperPath} ${carYear} ${carMake} ${carModel} "${carPart}"`;
 
@@ -126,161 +107,51 @@ export default function Home() {
       } finally {
         setLoading(false);
       }
-    } else if (searchType === 'ebay') {
-      if (!query.trim()) return;
-
-      setLoading(true);
-      setError(null);
-      setResults([]);
-
-      try {
-        const response = await fetch(`/api/ebay-search?q=${encodeURIComponent(query)}&limit=20`);
-        const data = await response.json();
-
-        if (data.success) {
-          setResults(data.items);
-          setTotalResults(data.total);
-        } else {
-          setError(data.error || 'Search failed');
-        }
-      } catch (err) {
-        setError('Failed to search. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    } else if (searchType === 'junkyard') {
-      setLoading(true);
-      setError(null);
-      setResults([]);
-
-      try {
-        const response = await fetch('/api/junkyard-scrape');
-        const data = await response.json();
-
-        if (data.success) {
-          setVehiclesStored(data.vehiclesStored);
-          await fetchVehicles();
-        } else {
-          setError(data.error || 'Scraping failed');
-        }
-      } catch (err) {
-        setError('Failed to scrape. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setError('Database search coming soon. Try another search option.');
     }
   };
 
-  const handleScrape = async () => {
-    setScraping(true);
-    setError(null);
-    setVehiclesStored(0);
-
-    try {
-      const response = await fetch('/api/junkyard-scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'anonymous' }),
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        setVehiclesStored(data.vehiclesStored);
-        // Fetch vehicles after scraping
-        await fetchVehicles();
-      } else {
-        setError(data.error || 'Scraping failed');
-      }
-    } catch (err) {
-      setError('Failed to scrape. Please try again.');
-    } finally {
-      setScraping(false);
+  const extractPartInfo = (command: string): PartSearch | null => {
+    // Try to match pattern: node /path/to/scraper YEAR MAKE MODEL "PART"
+    const match = command.match(/node\s+\S+\s+(\d{4})\s+(\w+)\s+(\w+)\s+"([^"]+)"/);
+    if (match) {
+      return {
+        year: match[1],
+        make: match[2],
+        model: match[3],
+        part: match[4]
+      };
     }
-  };
-
-  const fetchVehicles = async (page: number = currentPage) => {
-    try {
-      const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
-      const data = await response.json();
-
-      if (data.success) {
-        setResults(data.vehicles);
-        setTotalResults(data.total);
-        setTotalPages(data.totalPages);
-        setCurrentPage(data.page);
-      }
-    } catch (err) {
-      console.error('Failed to fetch vehicles:', err);
-    }
-  };
-
-  const handleCreateJob = async () => {
-    setJobLoading(true);
-    setJobError(null);
-    setJobResult(null);
-
-    try {
-      const response = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: jobCommand }),
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        setJobResult(data.job);
-        await fetchRecentJobs();
-      } else {
-        throw new Error(data.error || 'Failed to create job');
-      }
-    } catch (err) {
-      setJobError(err instanceof Error ? err.message : 'Failed to create job');
-    } finally {
-      setJobLoading(false);
-    }
+    return null;
   };
 
   const fetchRecentJobs = async () => {
+    setLoadingJobs(true);
     try {
-      const response = await fetch('/api/jobs?limit=5');
+      const response = await fetch('/api/jobs?limit=10');
       const data = await response.json();
       if (data.success) {
         setRecentJobs(data.jobs);
       }
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
+    } finally {
+      setLoadingJobs(false);
     }
+  };
+
+  const formatDate = (dateStr: string): string => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   useEffect(() => {
     fetchRecentJobs();
   }, []);
-
-  useEffect(() => {
-    if (searchType === 'junkyard') {
-      setCurrentPage(1);
-      fetchVehicles(1);
-    }
-  }, [searchType]);
-
-  // Helper function to extract stock number from notes
-  const extractStockNumber = (notes?: string): string => {
-    if (!notes) return '-';
-    const stockMatch = notes.match(/Stock:\s*(\S+)/i);
-    return stockMatch ? stockMatch[1] : '-';
-  };
-
-  // Helper function to format available date
-  const formatDate = (dateStr?: string): string => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -306,16 +177,6 @@ export default function Home() {
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-12">
           <div className="flex gap-4 mb-6 justify-center flex-wrap">
             <button
-              onClick={() => setSearchType('junkyard')}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                searchType === 'junkyard'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              Vehicles
-            </button>
-            <button
               onClick={() => setSearchType('car')}
               className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                 searchType === 'car'
@@ -323,31 +184,11 @@ export default function Home() {
                   : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
               }`}
             >
-              Car Search
-            </button>
-            <button
-              onClick={() => setSearchType('ebay')}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                searchType === 'ebay'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              Search eBay
-            </button>
-            <button
-              onClick={() => setSearchType('database')}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                searchType === 'database'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              Search Database
+              Part Search
             </button>
           </div>
 
-          {searchType === 'car' ? (
+          {searchType === 'car' && (
             <form onSubmit={handleSearch} className="max-w-3xl mx-auto">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div>
@@ -401,27 +242,6 @@ export default function Home() {
                 </button>
               </div>
             </form>
-          ) : (
-            <form onSubmit={handleSearch} className="max-w-2xl mx-auto flex gap-2">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={
-                  searchType === 'ebay'
-                    ? 'Search eBay for parts...'
-                    : 'Search our database...'
-                }
-                className="flex-1 px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Searching...' : 'Search'}
-              </button>
-            </form>
           )}
 
           {error && (
@@ -433,11 +253,8 @@ export default function Home() {
           {/* Car Search Result */}
           {searchType === 'car' && carSearchResult && (
             <div className="mt-6 p-6 bg-slate-700/50 border border-slate-600 rounded-xl">
-              <h3 className="text-xl font-semibold text-white mb-2">Search Results</h3>
-              <p className="text-3xl font-bold text-blue-400 mb-2">
-                {carSearchResult.resultCount.toLocaleString()}
-              </p>
-              <p className="text-slate-400 mb-4">results found on eBay for:</p>
+              <h3 className="text-xl font-semibold text-white mb-2">Search Created</h3>
+              <p className="text-slate-400 mb-4">Your search has been queued:</p>
               <p className="text-white font-medium mb-4">
                 "{carSearchResult.searchTerm}"
               </p>
@@ -445,281 +262,78 @@ export default function Home() {
                 href={carSearchResult.ebayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium mb-6"
+                className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 View on eBay
               </a>
-
-              {/* Listing Titles */}
-              {carSearchResult.titles.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="text-lg font-semibold text-white mb-1">Listing Titles</h4>
-                  <p className="text-sm text-slate-400 mb-3">
-                    Showing {carSearchResult.titles.length} of {carSearchResult.resultCount} results
-                    {carSearchResult.totalPages && ` (fetched ${carSearchResult.totalPages} pages)`}
-                  </p>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {carSearchResult.titles.map((title, index) => (
-                      <div
-                        key={index}
-                        className="p-3 bg-slate-800/50 rounded-lg text-slate-300 text-sm hover:bg-slate-700/50 transition-colors"
-                      >
-                        {title}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        {/* Job Creation Section */}
+        {/* Recent Searches Section */}
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8">
-          <h3 className="text-lg font-semibold text-white mb-4">Supabase Job Queue</h3>
-          <div className="space-y-4">
-            <div className="p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
-              <p className="text-sm text-blue-300">
-                <strong>Tip:</strong> Use the <em>Car Search</em> form above to automatically create scraper jobs.
-                This field is for custom commands.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-2">Custom command to run</label>
-              <input
-                type="text"
-                value={jobCommand}
-                onChange={(e) => setJobCommand(e.target.value)}
-                placeholder={`node ${process.env.NEXT_PUBLIC_SCRAPER_PATH || '/path/to/ebay-scraper-csv.js'} 2015 honda civic "center console"`}
-                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              />
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => {
-                  const scraperPath = process.env.NEXT_PUBLIC_SCRAPER_PATH || '/Users/admin/Desktop/puppeteer/ebay-scraper-csv.js';
-                  setJobCommand(`node ${scraperPath} 2015 honda civic "center console"`);
-                }}
-                className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm font-medium"
-              >
-                Fill Scraper Template
-              </button>
-              <button
-                onClick={handleCreateJob}
-                disabled={jobLoading}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {jobLoading ? 'Creating Job...' : 'Create Job'}
-              </button>
-              <button
-                onClick={fetchRecentJobs}
-                className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors font-medium"
-              >
-                Refresh Jobs
-              </button>
-            </div>
-            {jobResult && (
-              <div className="p-4 bg-green-600/20 border border-green-600 rounded-lg">
-                <div className="text-green-400 font-medium mb-2">Job Created!</div>
-                <div className="text-sm text-slate-300">
-                  ID: <span className="font-mono">{jobResult.id}</span><br />
-                  Status: <span className="text-yellow-400">{jobResult.status}</span>
-                </div>
-              </div>
-            )}
-            {jobError && (
-              <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
-                {jobError}
-              </div>
-            )}
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-white">Recent Searches</h3>
+            <button
+              onClick={fetchRecentJobs}
+              disabled={loadingJobs}
+              className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              Refresh
+            </button>
           </div>
 
-          {/* Recent Jobs */}
-          {recentJobs.length > 0 && (
-            <div className="mt-6">
-              <h4 className="text-sm font-semibold text-slate-400 mb-3">Recent Jobs</h4>
-              <div className="space-y-2">
-                {recentJobs.map((job) => (
-                  <div key={job.id} className="p-3 bg-slate-900/50 border border-slate-700 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-xs text-slate-500">{job.id.slice(0, 8)}...</span>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                        job.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                        job.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
-                        job.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
-                        {job.status}
-                      </span>
-                    </div>
-                    <div className="font-mono text-sm text-slate-300">{job.command}</div>
-                    {job.result && (
-                      <div className="mt-2 p-2 bg-slate-800 rounded text-xs text-slate-400 whitespace-pre-wrap">
-                        {job.result}
-                      </div>
-                    )}
-                    {job.error && (
-                      <div className="mt-2 p-2 bg-red-900/20 rounded text-xs text-red-400 whitespace-pre-wrap">
-                        {job.error}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+          {loadingJobs ? (
+            <div className="text-center py-8 text-slate-400">Loading recent searches...</div>
+          ) : recentJobs.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-600">
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Year</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Make</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Model</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Part</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Status</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentJobs.map((job) => {
+                    const partInfo = extractPartInfo(job.command);
+                    return (
+                      <tr
+                        key={job.id}
+                        className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors"
+                      >
+                        <td className="p-3 text-white">{partInfo?.year || '-'}</td>
+                        <td className="p-3 text-white">{partInfo?.make || '-'}</td>
+                        <td className="p-3 text-white">{partInfo?.model || '-'}</td>
+                        <td className="p-3 text-white">{partInfo?.part || '-'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                            job.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                            job.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+                            job.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                            'bg-red-500/20 text-red-400'
+                          }`}>
+                            {job.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-400 text-sm">{formatDate(job.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <div className="text-center py-8 text-slate-400">No recent searches found</div>
           )}
-          <p className="mt-4 text-sm text-slate-400">
-            Create a job in Supabase that your local worker can pick up and execute via Realtime.
-          </p>
         </div>
-
-        {/* Results */}
-        {results.length > 0 && (
-          <div className="mb-12">
-            <h3 className="text-xl font-semibold text-white mb-6">
-              {searchType === 'ebay' ? `Found ${totalResults} results` : `Vehicles (${totalResults})`}
-            </h3>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {searchType === 'ebay' ? (
-                (results as EbayItem[]).map((item, index) => (
-                  <a
-                    key={index}
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden hover:border-blue-500 transition-colors group"
-                  >
-                    {item.image && (
-                      <div className="aspect-video bg-slate-900 relative overflow-hidden">
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        />
-                      </div>
-                    )}
-                    <div className="p-4">
-                      <h4 className="font-semibold text-white mb-2 line-clamp-2">
-                        {item.title}
-                      </h4>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-2xl font-bold text-green-400">
-                          ${item.price.toFixed(2)}
-                        </span>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          item.condition === 'new' ? 'bg-green-100 text-green-800' :
-                          item.condition === 'refurbished' ? 'bg-blue-100 text-blue-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {item.condition}
-                        </span>
-                      </div>
-                      {item.seller && (
-                        <p className="text-sm text-slate-400">Seller: {item.seller}</p>
-                      )}
-                      {item.shipping && (
-                        <p className="text-sm text-slate-400">Shipping: {item.shipping}</p>
-                      )}
-                      {item.location && (
-                        <p className="text-sm text-slate-400">Location: {item.location}</p>
-                      )}
-                    </div>
-                  </a>
-                ))
-              ) : (
-                <div className="col-span-full">
-                  <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-600">
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Year</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Make</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Model</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">VIN</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Stock #</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Available Date</th>
-                          <th className="text-left p-4 text-sm font-semibold text-slate-300">Yard</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(results as Vehicle[]).map((vehicle, index) => (
-                          <tr
-                            key={vehicle.id}
-                            className={`border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors ${
-                              index % 2 === 0 ? 'bg-slate-800/30' : ''
-                            }`}
-                          >
-                            <td className="p-4 text-white">{vehicle.year}</td>
-                            <td className="p-4 text-white">{vehicle.make}</td>
-                            <td className="p-4 text-white">{vehicle.model}</td>
-                            <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
-                            <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
-                            <td className="p-4 text-slate-400">{formatDate(vehicle.date_available)}</td>
-                            <td className="p-4 text-slate-300">{vehicle.yard || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between px-4 py-3 border-t border-slate-600">
-                        <div className="text-sm text-slate-400">
-                          Showing {(currentPage - 1) * pageLimit + 1} to{' '}
-                          {Math.min(currentPage * pageLimit, totalResults)} of {totalResults} vehicles
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => fetchVehicles(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            Previous
-                          </button>
-                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            let pageNum;
-                            if (totalPages <= 5) {
-                              pageNum = i + 1;
-                            } else if (currentPage <= 3) {
-                              pageNum = i + 1;
-                            } else if (currentPage >= totalPages - 2) {
-                              pageNum = totalPages - 4 + i;
-                            } else {
-                              pageNum = currentPage - 2 + i;
-                            }
-                            return (
-                              <button
-                                key={pageNum}
-                                onClick={() => fetchVehicles(pageNum)}
-                                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                                  currentPage === pageNum
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                                }`}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          })}
-                          <button
-                            onClick={() => fetchVehicles(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Features Grid */}
-        {results.length === 0 && !carSearchResult && (
+        {!carSearchResult && (
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
               <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center mb-4">
