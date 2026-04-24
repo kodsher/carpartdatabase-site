@@ -32,6 +32,9 @@ export default function VehiclesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Debug logging
+  console.log('Vehicles page mounted, fetchVehicles will be called');
   const [searchTerm, setSearchTerm] = useState('');
   const [yardFilter, setYardFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -44,10 +47,13 @@ export default function VehiclesPage() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
   const fetchVehicles = async (page: number = 1) => {
+    console.log('fetchVehicles called with page:', page);
     setLoading(true);
     try {
       const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
+      console.log('fetch response status:', response.status);
       const data = await response.json();
+      console.log('fetch response data:', data);
 
       if (data.success) {
         setAllVehicles(data.vehicles);
@@ -55,11 +61,13 @@ export default function VehiclesPage() {
         setTotalResults(data.total);
         setTotalPages(data.totalPages);
         setCurrentPage(data.page);
+        console.log('State updated with vehicles:', data.vehicles.length);
       }
     } catch (err) {
       console.error('Failed to fetch vehicles:', err);
     } finally {
       setLoading(false);
+      console.log('fetchVehicles completed, loading set to false');
     }
   };
 
