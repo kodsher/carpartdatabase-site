@@ -27,12 +27,14 @@ export interface Vehicle {
 
 export default function VehiclesPage() {
   const [results, setResults] = useState<Vehicle[]>([]);
+  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
   const [totalResults, setTotalResults] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
-  const [pageLimit] = useState(50);
+  const [pageLimit] = useState(100); // Increased for better sorting
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [yardFilter, setYardFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -48,6 +50,7 @@ export default function VehiclesPage() {
       const data = await response.json();
 
       if (data.success) {
+        setAllVehicles(data.vehicles);
         setResults(data.vehicles);
         setTotalResults(data.total);
         setTotalPages(data.totalPages);
@@ -64,87 +67,103 @@ export default function VehiclesPage() {
     fetchVehicles(1);
   }, []);
 
+  // Get unique yards from all vehicles
+  const uniqueYards = Array.from(new Set(allVehicles.map(v => v.yard).filter(Boolean))).sort();
+
+  // Apply filters and sorting to display
+  useEffect(() => {
+    let filtered = [...allVehicles];
+
+    // Apply yard filter
+    if (yardFilter) {
+      filtered = filtered.filter(v => v.yard === yardFilter);
+    }
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(vehicle => {
+        const searchFields = [
+          vehicle.year.toString(),
+          vehicle.make || '',
+          vehicle.model || '',
+          vehicle.vin || '',
+          extractStockNumber(vehicle.notes),
+          vehicle.yard || '',
+        ].join(' ').toLowerCase();
+        return searchFields.includes(term);
+      });
+    }
+
+    // Apply sorting
+    if (sortColumn) {
+      filtered.sort((a, b) => {
+        let aVal, bVal;
+
+        switch (sortColumn) {
+          case 'year':
+            aVal = a.year;
+            bVal = b.year;
+            break;
+          case 'make':
+            aVal = a.make?.toLowerCase() || '';
+            bVal = b.make?.toLowerCase() || '';
+            break;
+          case 'model':
+            aVal = a.model?.toLowerCase() || '';
+            bVal = b.model?.toLowerCase() || '';
+            break;
+          case 'vin':
+            aVal = a.vin?.toLowerCase() || '';
+            bVal = b.vin?.toLowerCase() || '';
+            break;
+          case 'stock':
+            aVal = extractStockNumber(a.notes);
+            bVal = extractStockNumber(b.notes);
+            break;
+          case 'date':
+            aVal = a.date_available || '';
+            bVal = b.date_available || '';
+            break;
+          case 'yard':
+            aVal = a.yard?.toLowerCase() || '';
+            bVal = b.yard?.toLowerCase() || '';
+            break;
+          default:
+            return 0;
+        }
+
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+
+        return 0;
+      });
+    }
+
+    setResults(filtered);
+    setTotalResults(filtered.length);
+  }, [allVehicles, searchTerm, yardFilter, sortColumn, sortDirection]);
+
   // Handle sorting
   const handleSort = (column: string) => {
     const newDirection = sortColumn === column && sortDirection === 'asc' ? 'desc' : 'asc';
     setSortColumn(column);
     setSortDirection(newDirection);
-
-    const sorted = [...results].sort((a, b) => {
-      let aVal, bVal;
-
-      switch (column) {
-        case 'year':
-          aVal = a.year;
-          bVal = b.year;
-          break;
-        case 'make':
-          aVal = a.make?.toLowerCase() || '';
-          bVal = b.make?.toLowerCase() || '';
-          break;
-        case 'model':
-          aVal = a.model?.toLowerCase() || '';
-          bVal = b.model?.toLowerCase() || '';
-          break;
-        case 'vin':
-          aVal = a.vin?.toLowerCase() || '';
-          bVal = b.vin?.toLowerCase() || '';
-          break;
-        case 'stock':
-          aVal = extractStockNumber(a.notes);
-          bVal = extractStockNumber(b.notes);
-          break;
-        case 'date':
-          aVal = a.date_available || '';
-          bVal = b.date_available || '';
-          break;
-        case 'yard':
-          aVal = a.yard?.toLowerCase() || '';
-          bVal = b.yard?.toLowerCase() || '';
-          break;
-        default:
-          return 0;
-      }
-
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return newDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return newDirection === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-
-      return 0;
-    });
-
-    setResults(sorted);
   };
 
   // Handle search
   const handleSearch = (term: string) => {
     setSearchTerm(term);
-    const searchTerm = term.toLowerCase();
+  };
 
-    if (searchTerm === '') {
-      fetchVehicles(1);
-      return;
-    }
-
-    const filtered = results.filter(vehicle => {
-      const searchFields = [
-        vehicle.year.toString(),
-        vehicle.make || '',
-        vehicle.model || '',
-        vehicle.vin || '',
-        extractStockNumber(vehicle.notes),
-        vehicle.yard || '',
-      ].join(' ').toLowerCase();
-
-      return searchFields.includes(searchTerm);
-    });
-
-    setResults(filtered);
-    setTotalResults(filtered.length);
+  // Handle yard filter
+  const handleYardFilter = (yard: string) => {
+    setYardFilter(yard === 'All' ? '' : yard);
   };
 
   // Helper function to extract stock number from notes
@@ -166,7 +185,7 @@ export default function VehiclesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <Header showVehiclesLink={false} />
+      <Header />
 
       <AuthModal
         isOpen={authModalOpen}
@@ -179,15 +198,25 @@ export default function VehiclesPage() {
           Vehicles {loading ? '(Loading...)' : `(${totalResults})`}
         </h2>
 
-        {/* Search Bar */}
-        <div className="mb-6">
+        {/* Search and Filter Bar */}
+        <div className="mb-6 flex gap-4">
           <input
             type="text"
-            placeholder="Search vehicles by year, make, model, VIN, stock #, or yard..."
+            placeholder="Search vehicles by year, make, model, VIN, or stock #..."
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
+          <select
+            value={yardFilter || 'All'}
+            onChange={(e) => handleYardFilter(e.target.value)}
+            className="px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="All">All Yards</option>
+            {uniqueYards.map(yard => (
+              <option key={yard} value={yard}>{yard}</option>
+            ))}
+          </select>
         </div>
 
         {results.length > 0 ? (
@@ -215,18 +244,6 @@ export default function VehiclesPage() {
                   </th>
                   <th
                     className="text-left p-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                    onClick={() => handleSort('vin')}
-                  >
-                    VIN {sortColumn === 'vin' && (sortDirection === 'asc' ? '↑' : '↓')}
-                  </th>
-                  <th
-                    className="text-left p-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                    onClick={() => handleSort('stock')}
-                  >
-                    Stock # {sortColumn === 'stock' && (sortDirection === 'asc' ? '↑' : '↓')}
-                  </th>
-                  <th
-                    className="text-left p-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
                     onClick={() => handleSort('date')}
                   >
                     Available Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
@@ -236,6 +253,18 @@ export default function VehiclesPage() {
                     onClick={() => handleSort('yard')}
                   >
                     Yard {sortColumn === 'yard' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th
+                    className="text-left p-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    onClick={() => handleSort('vin')}
+                  >
+                    VIN {sortColumn === 'vin' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th
+                    className="text-left p-4 text-sm font-semibold text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    onClick={() => handleSort('stock')}
+                  >
+                    Stock # {sortColumn === 'stock' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
                 </tr>
               </thead>
@@ -250,65 +279,14 @@ export default function VehiclesPage() {
                     <td className="p-4 text-white">{vehicle.year}</td>
                     <td className="p-4 text-white">{vehicle.make}</td>
                     <td className="p-4 text-white">{vehicle.model}</td>
-                    <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
-                    <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
                     <td className="p-4 text-slate-400">{formatDate(vehicle.date_available)}</td>
                     <td className="p-4 text-slate-300">{vehicle.yard || '-'}</td>
+                    <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
+                    <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-600">
-                <div className="text-sm text-slate-400">
-                  Showing {(currentPage - 1) * pageLimit + 1} to{' '}
-                  {Math.min(currentPage * pageLimit, totalResults)} of {totalResults} vehicles
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => fetchVehicles(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Previous
-                  </button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => fetchVehicles(pageNum)}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                          currentPage === pageNum
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => fetchVehicles(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div className="text-center py-16">
