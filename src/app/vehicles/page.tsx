@@ -114,7 +114,7 @@ export default function VehiclesPage() {
       const data = await response.json();
 
       if (data.success) {
-        const ids = new Set(data.inventory.map((item: any) => item.vehicleId));
+        const ids = new Set(data.inventory.map((item: any) => item.vehicleId)) as Set<string>;
         setInventoryVehicleIds(ids);
       }
     } catch (err) {
@@ -143,6 +143,8 @@ export default function VehiclesPage() {
       setAuthModalOpen(true);
       return;
     }
+
+    if (!session) return;
 
     setAddingToInventory(prev => new Set(prev).add(vehicleId));
 
