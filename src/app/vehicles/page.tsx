@@ -93,8 +93,8 @@ export default function VehiclesPage() {
       const response = await fetch('/api/junkyard-scrape?page=1&limit=10000');
       const data = await response.json();
       if (data.success && data.vehicles) {
-        const yards = Array.from(new Set(data.vehicles.map((v: Vehicle) => v.yard).filter(Boolean))).sort();
-        setUniqueYards(yards);
+        const yards = Array.from(new Set(data.vehicles.map((v: Vehicle) => v.yard).filter(Boolean))) as string[];
+        setUniqueYards(yards.sort());
       }
     } catch (err) {
       console.error('Failed to fetch unique yards:', err);
