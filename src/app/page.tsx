@@ -370,7 +370,7 @@ export default function Home() {
                   : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
               }`}
             >
-              Junkyard Inventory
+              Vehicles
             </button>
             <button
               onClick={() => setSearchType('database')}
