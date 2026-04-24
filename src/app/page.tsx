@@ -155,7 +155,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <Header showVehiclesLink={true} onAuthClick={setAuthMode} />
+      <Header onAuthClick={setAuthMode} />
 
       <AuthModal
         isOpen={authModalOpen}
