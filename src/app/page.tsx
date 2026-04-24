@@ -41,6 +41,10 @@ export interface Job {
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  num_results?: number | null;
+  expected_results?: number | null;
+  volume?: number | null;
+  sell_through_rate?: number | null;
 }
 
 export default function Home() {
@@ -295,6 +299,9 @@ export default function Home() {
                     <th className="text-left p-3 text-sm font-semibold text-slate-300">Model</th>
                     <th className="text-left p-3 text-sm font-semibold text-slate-300">Part</th>
                     <th className="text-left p-3 text-sm font-semibold text-slate-300">Status</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Results</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Volume</th>
+                    <th className="text-left p-3 text-sm font-semibold text-slate-300">Sell Through</th>
                     <th className="text-left p-3 text-sm font-semibold text-slate-300">Created</th>
                   </tr>
                 </thead>
@@ -319,6 +326,27 @@ export default function Home() {
                           }`}>
                             {job.status}
                           </span>
+                        </td>
+                        <td className="p-3">
+                          {job.status === 'completed' && job.num_results !== null && job.num_results !== undefined ? (
+                            <span className="text-white font-medium">{job.num_results}</span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {job.status === 'completed' && job.volume !== null && job.volume !== undefined ? (
+                            <span className="text-white">{job.volume.toLocaleString()}</span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {job.status === 'completed' && job.sell_through_rate !== null && job.sell_through_rate !== undefined ? (
+                            <span className="text-white">{job.sell_through_rate.toFixed(1)}%</span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
                         </td>
                         <td className="p-3 text-slate-400 text-sm">{formatDate(job.created_at)}</td>
                       </tr>
