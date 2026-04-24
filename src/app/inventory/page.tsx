@@ -101,6 +101,8 @@ export default function InventoryPage() {
       return;
     }
 
+    if (!session) return;
+
     try {
       const response = await fetch(`/api/user-inventory/${inventoryId}`, {
         method: 'DELETE',
@@ -124,6 +126,8 @@ export default function InventoryPage() {
 
   // Update notes
   const updateNotes = async (inventoryId: string) => {
+    if (!session) return;
+
     try {
       const response = await fetch(`/api/user-inventory/${inventoryId}`, {
         method: 'PATCH',
