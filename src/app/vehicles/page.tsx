@@ -29,6 +29,8 @@ export default function VehiclesPage() {
   const [results, setResults] = useState<Vehicle[]>([]);
   const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
   const [totalResults, setTotalResults] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [yardFilter, setYardFilter] = useState<string>('');
@@ -41,29 +43,18 @@ export default function VehiclesPage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
-  const fetchVehicles = async () => {
+  const fetchVehicles = async (page: number = 1) => {
     setLoading(true);
     try {
-      // First, get total count to know how many pages to fetch
-      const initialResponse = await fetch(`/api/junkyard-scrape?page=1&limit=1`);
-      const initialData = await initialResponse.json();
+      const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
+      const data = await response.json();
 
-      if (initialData.success) {
-        const totalPages = initialData.totalPages;
-        const allVehiclesData: Vehicle[] = [];
-
-        // Fetch all pages
-        for (let page = 1; page <= totalPages; page++) {
-          const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
-          const data = await response.json();
-
-          if (data.success) {
-            allVehiclesData.push(...data.vehicles);
-          }
-        }
-
-        setAllVehicles(allVehiclesData);
-        setTotalResults(initialData.total);
+      if (data.success) {
+        setAllVehicles(data.vehicles);
+        setResults(data.vehicles);
+        setTotalResults(data.total);
+        setTotalPages(data.totalPages);
+        setCurrentPage(data.page);
       }
     } catch (err) {
       console.error('Failed to fetch vehicles:', err);
@@ -73,7 +64,7 @@ export default function VehiclesPage() {
   };
 
   useEffect(() => {
-    fetchVehicles();
+    fetchVehicles(1);
   }, []);
 
   // Get unique yards from all vehicles
@@ -81,7 +72,7 @@ export default function VehiclesPage() {
 
   // Apply filters and sorting to display
   useEffect(() => {
-    let filtered = [...allVehicles];
+    let filtered = [...results]; // Work on current page results only
 
     // Apply yard filter
     if (yardFilter) {
@@ -156,7 +147,7 @@ export default function VehiclesPage() {
 
     setResults(filtered);
     setTotalResults(filtered.length);
-  }, [allVehicles, searchTerm, yardFilter, sortColumn, sortDirection]);
+  }, [results, currentPage]);
 
   // Handle sorting
   const handleSort = (column: string) => {
@@ -296,6 +287,56 @@ export default function VehiclesPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-600">
+                <div className="text-sm text-slate-400">
+                  Showing {results.length > 0 ? `${results.length} of ${totalResults}` : '0'} vehicles
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => fetchVehicles(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => fetchVehicles(pageNum)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => fetchVehicles(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-16">
