@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import SignOutButton from './components/SignOutButton';
 
 export default async function AdminDashboard() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

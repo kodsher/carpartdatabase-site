@@ -93,7 +93,9 @@ export default function Home() {
 
       try {
         // Create a job in the jobs table with the command to run the puppeteer scraper
-        const command = `node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js ${carYear} ${carMake} ${carModel} "${carPart}"`;
+        // Use environment variable for scraper path, or default to local path
+        const scraperPath = process.env.NEXT_PUBLIC_SCRAPER_PATH || '/Users/admin/Desktop/puppeteer/ebay-scraper-csv.js';
+        const command = `node ${scraperPath} ${carYear} ${carMake} ${carModel} "${carPart}"`;
 
         const response = await fetch('/api/jobs', {
           method: 'POST',
@@ -537,13 +539,16 @@ export default function Home() {
                 type="text"
                 value={jobCommand}
                 onChange={(e) => setJobCommand(e.target.value)}
-                placeholder='node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js 2015 honda civic "center console"'
+                placeholder={`node ${process.env.NEXT_PUBLIC_SCRAPER_PATH || '/path/to/ebay-scraper-csv.js'} 2015 honda civic "center console"`}
                 className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
               />
             </div>
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setJobCommand('node /Users/admin/Desktop/puppeteer/ebay-scraper-csv.js 2015 honda civic "center console"')}
+                onClick={() => {
+                  const scraperPath = process.env.NEXT_PUBLIC_SCRAPER_PATH || '/Users/admin/Desktop/puppeteer/ebay-scraper-csv.js';
+                  setJobCommand(`node ${scraperPath} 2015 honda civic "center console"`);
+                }}
                 className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm font-medium"
               >
                 Fill Scraper Template
