@@ -343,6 +343,16 @@ export default function Home() {
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-12">
           <div className="flex gap-4 mb-6 justify-center flex-wrap">
             <button
+              onClick={() => setSearchType('junkyard')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                searchType === 'junkyard'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              Vehicles
+            </button>
+            <button
               onClick={() => setSearchType('car')}
               className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                 searchType === 'car'
@@ -361,16 +371,6 @@ export default function Home() {
               }`}
             >
               Search eBay
-            </button>
-            <button
-              onClick={() => setSearchType('junkyard')}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                searchType === 'junkyard'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              Vehicles
             </button>
             <button
               onClick={() => setSearchType('database')}
