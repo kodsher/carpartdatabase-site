@@ -68,11 +68,6 @@ export default function Home() {
   const [carPart, setCarPart] = useState('');
   const [carSearchResult, setCarSearchResult] = useState<CarSearchResult | null>(null);
 
-  // Test button state
-  const [testWord, setTestWord] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
-  const [testError, setTestError] = useState<string | null>(null);
-
   // Job creation state
   const [jobCommand, setJobCommand] = useState('echo "Hello from Supabase!"');
   const [jobLoading, setJobLoading] = useState(false);
@@ -217,29 +212,6 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Failed to fetch vehicles:', err);
-    }
-  };
-
-  const handleTestButton = async () => {
-    setTestLoading(true);
-    setTestError(null);
-    setTestWord('');
-
-    try {
-      const response = await fetch('http://localhost:3001/api/word');
-      if (!response.ok) {
-        throw new Error('Failed to connect to local server. Run `node ~/test-server-simple.js` in a terminal.');
-      }
-      const data = await response.json();
-      if (data.word) {
-        setTestWord(data.word);
-      } else {
-        throw new Error('No word received from server');
-      }
-    } catch (err) {
-      setTestError(err instanceof Error ? err.message : 'Failed to fetch word');
-    } finally {
-      setTestLoading(false);
     }
   };
 
@@ -537,33 +509,6 @@ export default function Home() {
               )}
             </div>
           )}
-        </div>
-
-        {/* Test Button Section */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8">
-          <h3 className="text-lg font-semibold text-white mb-4">Local Server Test</h3>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleTestButton}
-              disabled={testLoading}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {testLoading ? 'Connecting...' : 'Test Local Server'}
-            </button>
-            {testWord && (
-              <div className="px-4 py-2 bg-green-600/20 border border-green-600 rounded-lg">
-                <span className="text-green-400 font-medium">Word: {testWord}</span>
-              </div>
-            )}
-          </div>
-          {testError && (
-            <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
-              {testError}
-            </div>
-          )}
-          <p className="mt-3 text-sm text-slate-400">
-            This button connects to the backend API and returns a random test word.
-          </p>
         </div>
 
         {/* Job Creation Section */}
