@@ -4,11 +4,10 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 
 interface HeaderProps {
-  showVehiclesLink?: boolean;
   onAuthClick?: (mode: 'signin' | 'signup') => void;
 }
 
-export default function Header({ showVehiclesLink = false, onAuthClick }: HeaderProps) {
+export default function Header({ onAuthClick }: HeaderProps) {
   const { user, signOut } = useAuth();
 
   return (
@@ -18,11 +17,9 @@ export default function Header({ showVehiclesLink = false, onAuthClick }: Header
           <Link href="/" className="text-xl font-bold text-white hover:text-blue-400 transition-colors">
             Car Part Database
           </Link>
-          {showVehiclesLink && (
-            <Link href="/vehicles" className="text-slate-300 hover:text-white transition-colors">
-              Vehicles
-            </Link>
-          )}
+          <Link href="/vehicles" className="text-slate-300 hover:text-white transition-colors">
+            Vehicles
+          </Link>
         </div>
         <div className="flex gap-4">
           {user ? (

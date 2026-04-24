@@ -29,32 +29,41 @@ export default function VehiclesPage() {
   const [results, setResults] = useState<Vehicle[]>([]);
   const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
   const [totalResults, setTotalResults] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [pageLimit] = useState(100); // Increased for better sorting
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [yardFilter, setYardFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const pageLimit = 100;
 
   // Auth state
   const { user, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
-  const fetchVehicles = async (page: number = currentPage) => {
+  const fetchVehicles = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
-      const data = await response.json();
+      // First, get total count to know how many pages to fetch
+      const initialResponse = await fetch(`/api/junkyard-scrape?page=1&limit=1`);
+      const initialData = await initialResponse.json();
 
-      if (data.success) {
-        setAllVehicles(data.vehicles);
-        setResults(data.vehicles);
-        setTotalResults(data.total);
-        setTotalPages(data.totalPages);
-        setCurrentPage(data.page);
+      if (initialData.success) {
+        const totalPages = initialData.totalPages;
+        const allVehiclesData: Vehicle[] = [];
+
+        // Fetch all pages
+        for (let page = 1; page <= totalPages; page++) {
+          const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
+          const data = await response.json();
+
+          if (data.success) {
+            allVehiclesData.push(...data.vehicles);
+          }
+        }
+
+        setAllVehicles(allVehiclesData);
+        setTotalResults(initialData.total);
       }
     } catch (err) {
       console.error('Failed to fetch vehicles:', err);
@@ -64,7 +73,7 @@ export default function VehiclesPage() {
   };
 
   useEffect(() => {
-    fetchVehicles(1);
+    fetchVehicles();
   }, []);
 
   // Get unique yards from all vehicles
