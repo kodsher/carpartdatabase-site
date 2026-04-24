@@ -11,15 +11,9 @@ export interface Vehicle {
   model: string;
   year: number;
   vin?: string;
-  trim?: string;
-  engine?: string;
-  transmission?: string;
-  color?: string;
-  mileage?: number;
   notes?: string;
   yard?: string;
   source_url?: string;
-  scraped_at?: string;
   created_at: string;
   date_available?: string;
   junkyard_id?: string;
@@ -27,10 +21,9 @@ export interface Vehicle {
 
 export default function VehiclesPage() {
   const [results, setResults] = useState<Vehicle[]>([]);
-  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([]);
-  const [totalResults, setTotalResults] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [totalResults, setTotalResults] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Debug logging
@@ -39,10 +32,15 @@ export default function VehiclesPage() {
   const [yardFilter, setYardFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [uniqueYards, setUniqueYards] = useState<string[]>([]);
   const pageLimit = 100;
 
+  // Inventory state - track which vehicle IDs are in user's inventory
+  const [inventoryVehicleIds, setInventoryVehicleIds] = useState<Set<string>>(new Set());
+  const [addingToInventory, setAddingToInventory] = useState<Set<string>>(new Set());
+
   // Auth state
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
@@ -50,16 +48,34 @@ export default function VehiclesPage() {
     console.log('fetchVehicles called with page:', page);
     setLoading(true);
     try {
-      const response = await fetch(`/api/junkyard-scrape?page=${page}&limit=${pageLimit}`);
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pageLimit.toString(),
+      });
+
+      if (sortColumn) {
+        params.append('sortBy', sortColumn);
+        params.append('sortDirection', sortDirection);
+      }
+
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+
+      if (yardFilter && yardFilter !== 'All') {
+        params.append('yard', yardFilter);
+      }
+
+      const response = await fetch(`/api/junkyard-scrape?${params.toString()}`);
       console.log('fetch response status:', response.status);
       const data = await response.json();
       console.log('fetch response data:', data);
 
       if (data.success) {
-        setAllVehicles(data.vehicles);
         setResults(data.vehicles);
-        setTotalResults(data.total);
         setTotalPages(data.totalPages);
+        setTotalResults(data.total);
         setCurrentPage(data.page);
         console.log('State updated with vehicles:', data.vehicles.length);
       }
@@ -71,91 +87,142 @@ export default function VehiclesPage() {
     }
   };
 
+  // Fetch unique yards for the dropdown
+  const fetchUniqueYards = async () => {
+    try {
+      const response = await fetch('/api/junkyard-scrape?page=1&limit=10000');
+      const data = await response.json();
+      if (data.success && data.vehicles) {
+        const yards = Array.from(new Set(data.vehicles.map((v: Vehicle) => v.yard).filter(Boolean))).sort();
+        setUniqueYards(yards);
+      }
+    } catch (err) {
+      console.error('Failed to fetch unique yards:', err);
+    }
+  };
+
+  // Fetch user's inventory vehicle IDs
+  const fetchInventoryIds = async () => {
+    if (!session) return;
+
+    try {
+      const response = await fetch('/api/user-inventory', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        const ids = new Set(data.inventory.map((item: any) => item.vehicleId));
+        setInventoryVehicleIds(ids);
+      }
+    } catch (err) {
+      console.error('Failed to fetch inventory:', err);
+    }
+  };
+
   useEffect(() => {
     fetchVehicles(1);
-  }, []);
+    fetchUniqueYards();
+    if (session) {
+      fetchInventoryIds();
+    }
+  }, [session]);
 
-  // Get unique yards from all vehicles
-  const uniqueYards = Array.from(new Set(allVehicles.map(v => v.yard).filter(Boolean))).sort();
-
-  // Apply filters and sorting to display
+  // Refetch when sort, search, or yard filter changes
   useEffect(() => {
-    let filtered = [...results]; // Work on current page results only
+    setCurrentPage(1);
+    fetchVehicles(1);
+  }, [sortColumn, sortDirection, searchTerm, yardFilter]);
 
-    // Apply yard filter
-    if (yardFilter) {
-      filtered = filtered.filter(v => v.yard === yardFilter);
+  // Add vehicle to inventory
+  const addToInventory = async (vehicleId: string) => {
+    if (!user) {
+      setAuthMode('signin');
+      setAuthModalOpen(true);
+      return;
     }
 
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(vehicle => {
-        const searchFields = [
-          vehicle.year.toString(),
-          vehicle.make || '',
-          vehicle.model || '',
-          vehicle.vin || '',
-          extractStockNumber(vehicle.notes),
-          vehicle.yard || '',
-        ].join(' ').toLowerCase();
-        return searchFields.includes(term);
+    setAddingToInventory(prev => new Set(prev).add(vehicleId));
+
+    try {
+      const response = await fetch('/api/user-inventory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ vehicleId }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setInventoryVehicleIds(prev => new Set(prev).add(vehicleId));
+      } else {
+        alert(data.error || 'Failed to add to inventory');
+      }
+    } catch (err) {
+      console.error('Failed to add to inventory:', err);
+      alert('Failed to add to inventory');
+    } finally {
+      setAddingToInventory(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(vehicleId);
+        return newSet;
       });
     }
+  };
 
-    // Apply sorting
-    if (sortColumn) {
-      filtered.sort((a, b) => {
-        let aVal, bVal;
+  // Remove vehicle from inventory
+  const removeFromInventory = async (vehicleId: string) => {
+    if (!session) return;
 
-        switch (sortColumn) {
-          case 'year':
-            aVal = a.year;
-            bVal = b.year;
-            break;
-          case 'make':
-            aVal = a.make?.toLowerCase() || '';
-            bVal = b.make?.toLowerCase() || '';
-            break;
-          case 'model':
-            aVal = a.model?.toLowerCase() || '';
-            bVal = b.model?.toLowerCase() || '';
-            break;
-          case 'vin':
-            aVal = a.vin?.toLowerCase() || '';
-            bVal = b.vin?.toLowerCase() || '';
-            break;
-          case 'stock':
-            aVal = extractStockNumber(a.notes);
-            bVal = extractStockNumber(b.notes);
-            break;
-          case 'date':
-            aVal = a.date_available || '';
-            bVal = b.date_available || '';
-            break;
-          case 'yard':
-            aVal = a.yard?.toLowerCase() || '';
-            bVal = b.yard?.toLowerCase() || '';
-            break;
-          default:
-            return 0;
-        }
-
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-        }
-
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-        }
-
-        return 0;
-      });
+    if (!confirm('Remove this vehicle from your inventory?')) {
+      return;
     }
 
-    setResults(filtered);
-    setTotalResults(filtered.length);
-  }, [results, currentPage]);
+    // Find the inventory item ID for this vehicle
+    try {
+      const response = await fetch('/api/user-inventory', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        const item = data.inventory.find((i: any) => i.vehicleId === vehicleId);
+        if (item) {
+          const deleteResponse = await fetch(`/api/user-inventory/${item.inventoryId}`, {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+
+          if (deleteResponse.ok) {
+            setInventoryVehicleIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(vehicleId);
+              return newSet;
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to remove from inventory:', err);
+      alert('Failed to remove from inventory');
+    }
+  };
+
+  // Helper function to extract stock number from notes
+  const extractStockNumber = (notes?: string): string => {
+    if (!notes) return '-';
+    const stockMatch = notes.match(/Stock:\s*(\S+)/i);
+    return stockMatch ? stockMatch[1] : '-';
+  };
 
   // Handle sorting
   const handleSort = (column: string) => {
@@ -164,7 +231,7 @@ export default function VehiclesPage() {
     setSortDirection(newDirection);
   };
 
-  // Handle search
+  // Handle search (debounced)
   const handleSearch = (term: string) => {
     setSearchTerm(term);
   };
@@ -174,11 +241,10 @@ export default function VehiclesPage() {
     setYardFilter(yard === 'All' ? '' : yard);
   };
 
-  // Helper function to extract stock number from notes
-  const extractStockNumber = (notes?: string): string => {
-    if (!notes) return '-';
-    const stockMatch = notes.match(/Stock:\s*(\S+)/i);
-    return stockMatch ? stockMatch[1] : '-';
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    fetchVehicles(page);
   };
 
   // Helper function to format available date
@@ -203,7 +269,7 @@ export default function VehiclesPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h2 className="text-2xl font-bold text-white mb-6">
-          Vehicles {loading ? '(Loading...)' : `(${totalResults})`}
+          Vehicles {loading ? '(Loading...)' : `(${totalResults} total)`}
         </h2>
 
         {/* Search and Filter Bar */}
@@ -274,6 +340,11 @@ export default function VehiclesPage() {
                   >
                     Stock # {sortColumn === 'stock' && (sortDirection === 'asc' ? '↑' : '↓')}
                   </th>
+                  {user && (
+                    <th className="text-left p-4 text-sm font-semibold text-slate-300">
+                      Inventory
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -291,6 +362,26 @@ export default function VehiclesPage() {
                     <td className="p-4 text-slate-300">{vehicle.yard || '-'}</td>
                     <td className="p-4 text-slate-400">{vehicle.vin || '-'}</td>
                     <td className="p-4 text-white font-mono">{extractStockNumber(vehicle.notes)}</td>
+                    {user && (
+                      <td className="p-4">
+                        {inventoryVehicleIds.has(vehicle.id) ? (
+                          <button
+                            onClick={() => removeFromInventory(vehicle.id)}
+                            className="px-3 py-1.5 text-sm bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600/30 transition-colors"
+                          >
+                            ✓ Added
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => addToInventory(vehicle.id)}
+                            disabled={addingToInventory.has(vehicle.id)}
+                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {addingToInventory.has(vehicle.id) ? 'Adding...' : 'Add +'}
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -304,7 +395,7 @@ export default function VehiclesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => fetchVehicles(currentPage - 1)}
+                    onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                     className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
@@ -324,7 +415,7 @@ export default function VehiclesPage() {
                     return (
                       <button
                         key={pageNum}
-                        onClick={() => fetchVehicles(pageNum)}
+                        onClick={() => handlePageChange(pageNum)}
                         className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                           currentPage === pageNum
                             ? 'bg-blue-600 text-white'
@@ -336,7 +427,7 @@ export default function VehiclesPage() {
                     );
                   })}
                   <button
-                    onClick={() => fetchVehicles(currentPage + 1)}
+                    onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                     className="px-3 py-1.5 text-sm font-medium bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >

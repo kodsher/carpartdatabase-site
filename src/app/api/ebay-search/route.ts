@@ -85,5 +85,6 @@ function parsePrice(priceText: string): number {
   const cleaned = priceText.replace(/[$,]/g, '').replace(/,/g, '').trim();
   const match = cleaned.match(/^[\d.]+/);
   if (!match) return 0;
-  return parseFloat(match[0]);
+  // Convert dollars to cents
+  return Math.round(parseFloat(match[0]) * 100);
 }

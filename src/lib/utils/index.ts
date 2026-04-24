@@ -5,13 +5,13 @@
  */
 
 /**
- * Format currency amount
+ * Format currency amount (expects amount in cents)
  */
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-  }).format(amount);
+  }).format(amount / 100);
 }
 
 /**

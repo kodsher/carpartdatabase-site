@@ -122,32 +122,77 @@ export async function scrapeAndStoreWrenchApart(userId: string): Promise<Scrapin
   }
 }
 
-export async function getStoredVehicles(junkyardId?: string, page: number = 1, limit: number = 50) {
+export async function getStoredVehicles(
+  junkyardId?: string,
+  page: number = 1,
+  limit: number = 50,
+  sortBy?: string,
+  sortDirection: 'asc' | 'desc' = 'desc',
+  searchTerm?: string,
+  yardFilter?: string
+) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  // Get total count
-  const { count, error: countError } = await supabase
+  // Build base query for counting
+  let countQuery = supabase
     .from('junkyard_vehicles')
     .select('*', { count: 'exact', head: true });
+
+  // Build base query for fetching
+  let fetchQuery = supabase
+    .from('junkyard_vehicles')
+    .select('*');
+
+  // Apply junkyard filter
+  if (junkyardId) {
+    countQuery = countQuery.eq('junkyard_id', junkyardId);
+    fetchQuery = fetchQuery.eq('junkyard_id', junkyardId);
+  }
+
+  // Apply yard filter
+  if (yardFilter) {
+    countQuery = countQuery.eq('yard', yardFilter);
+    fetchQuery = fetchQuery.eq('yard', yardFilter);
+  }
+
+  // Apply search filter (search across multiple fields)
+  if (searchTerm) {
+    const term = `%${searchTerm}%`;
+    // Note: Supabase uses Postgres, we can use .or() for multi-column search
+    const searchCondition = `year.ilike.${term},make.ilike.${term},model.ilike.${term},vin.ilike.${term},notes.ilike.${term},yard.ilike.${term}`;
+    countQuery = countQuery.or(searchCondition);
+    fetchQuery = fetchQuery.or(searchCondition);
+  }
+
+  // Get total count
+  const { count, error: countError } = await countQuery;
 
   if (countError) {
     throw new Error(`Failed to count vehicles: ${countError.message}`);
   }
 
-  let query = supabase
-    .from('junkyard_vehicles')
-    .select('*')
-    .order('created_at', { ascending: false })
+  // Map column names for sorting
+  const columnMap: Record<string, string> = {
+    year: 'year',
+    make: 'make',
+    model: 'model',
+    vin: 'vin',
+    stock: 'notes', // Stock is in notes field
+    date: 'date_available',
+    yard: 'yard',
+  };
+
+  const orderColumn = sortBy ? columnMap[sortBy] || 'created_at' : 'created_at';
+
+  // Apply sorting and pagination
+  fetchQuery = fetchQuery
+    .order(orderColumn, { ascending: sortDirection === 'asc', nullsFirst: false })
     .range(from, to);
 
-  if (junkyardId) {
-    query = query.eq('junkyard_id', junkyardId);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await fetchQuery;
 
   if (error) {
     throw new Error(`Failed to fetch vehicles: ${error.message}`);

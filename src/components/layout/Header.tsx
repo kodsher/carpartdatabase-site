@@ -20,6 +20,11 @@ export default function Header({ onAuthClick }: HeaderProps) {
           <Link href="/vehicles" className="text-slate-300 hover:text-white transition-colors">
             Vehicles
           </Link>
+          {user && (
+            <Link href="/inventory" className="text-slate-300 hover:text-white transition-colors">
+              My Inventory
+            </Link>
+          )}
         </div>
         <div className="flex gap-4">
           {user ? (

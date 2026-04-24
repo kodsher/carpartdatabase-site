@@ -147,11 +147,13 @@ function buildEbaySearchUrl(query: string, options: {
   }
 
   if (options.maxPrice) {
-    params.set('_udhi', options.maxPrice.toString());
+    // Convert cents to dollars for eBay URL
+    params.set('_udhi', (options.maxPrice / 100).toString());
   }
 
   if (options.minPrice) {
-    params.set('_udlo', options.minPrice.toString());
+    // Convert cents to dollars for eBay URL
+    params.set('_udlo', (options.minPrice / 100).toString());
   }
 
   return `${baseUrl}?${params.toString()}`;
@@ -161,7 +163,8 @@ function parsePrice(priceText: string): number {
   const cleaned = priceText.replace(/[$,]/g, '').replace(/,/g, '').trim();
   const match = cleaned.match(/^[\d.]+/);
   if (!match) return 0;
-  return parseFloat(match[0]);
+  // Convert dollars to cents
+  return Math.round(parseFloat(match[0]) * 100);
 }
 
 function extractCondition(text: string): string {

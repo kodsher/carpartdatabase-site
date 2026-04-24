@@ -28,8 +28,12 @@ export async function GET(request: NextRequest) {
     const junkyardId = searchParams.get('junkyardId') || undefined;
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const sortBy = searchParams.get('sortBy') || undefined;
+    const sortDirection = (searchParams.get('sortDirection') as 'asc' | 'desc') || 'desc';
+    const searchTerm = searchParams.get('search') || undefined;
+    const yardFilter = searchParams.get('yard') || undefined;
 
-    const result = await getStoredVehicles(junkyardId, page, limit);
+    const result = await getStoredVehicles(junkyardId, page, limit, sortBy, sortDirection, searchTerm, yardFilter);
 
     return NextResponse.json({
       success: true,
