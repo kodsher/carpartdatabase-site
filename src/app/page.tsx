@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import AuthModal from '@/components/AuthModal';
 import Header from '@/components/layout/Header';
+import { supabase, TABLES } from '@/lib/supabase/client';
 
 export interface Vehicle {
   id: string;
@@ -63,6 +64,12 @@ export default function Home() {
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
 
+  // Current search tracking state
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [currentJobStatus, setCurrentJobStatus] = useState<'pending' | 'running' | 'processing' | 'completed' | 'error' | null>(null);
+  const [currentJobResults, setCurrentJobResults] = useState<{ results?: number; volume?: number; sellThrough?: number } | null>(null);
+  const [searchStartTime, setSearchStartTime] = useState<number | null>(null);
+
   // Auth state
   const { user, signOut } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -81,6 +88,12 @@ export default function Home() {
       setError(null);
       setCarSearchResult(null);
 
+      // Reset current search tracking
+      setCurrentJobId(null);
+      setCurrentJobStatus(null);
+      setCurrentJobResults(null);
+      setSearchStartTime(null);
+
       try {
         const scraperPath = process.env.NEXT_PUBLIC_SCRAPER_PATH || '/Users/admin/Desktop/puppeteer/ebay-scraper-csv.js';
         const command = `node ${scraperPath} ${carYear} ${carMake} ${carModel} "${carPart}"`;
@@ -94,6 +107,11 @@ export default function Home() {
         const data = await response.json();
 
         if (data.success) {
+          const jobId = data.job.id;
+          setCurrentJobId(jobId);
+          setCurrentJobStatus('pending');
+          setSearchStartTime(Date.now());
+
           setCarSearchResult({
             success: true,
             searchQuery: `${carYear} ${carMake} ${carModel} ${carPart}`,
@@ -155,7 +173,139 @@ export default function Home() {
 
   useEffect(() => {
     fetchRecentJobs();
-  }, []);
+
+    // Set up Realtime subscriptions
+    const subscriptions: any[] = [];
+
+    // Subscribe to jobs table changes (status updates)
+    const jobsChannel = supabase
+      .channel('jobs-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'jobs',
+        },
+        async (payload) => {
+          console.log('Jobs change detected:', payload);
+          await fetchRecentJobs();
+
+          // Check if this is our current job and update status
+          if (payload.event === 'UPDATE' && currentJobId && payload.new.id === currentJobId) {
+            const job = payload.new;
+            setCurrentJobStatus(job.status);
+            if (job.status === 'completed') {
+              // Fetch updated jobs to get results
+              await fetchRecentJobs();
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Jobs subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to jobs table');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Error subscribing to jobs table');
+        }
+      });
+
+    subscriptions.push(jobsChannel);
+
+    // Subscribe to PartInfo table changes (results updates)
+    const partInfoChannel = supabase
+      .channel('partinfo-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT', // New results available
+          schema: 'public',
+          table: 'PartInfo',
+        },
+        async (payload) => {
+          console.log('PartInfo change detected:', payload);
+          await fetchRecentJobs();
+
+          // Check if this PartInfo matches our current job
+          if (currentJobId && carSearchResult) {
+            const searchTerm = extractPartInfo(carSearchResult.searchTerm);
+            if (searchTerm && payload.new.name) {
+              if (payload.new.name.toLowerCase().includes(`${searchTerm.year} ${searchTerm.make} ${searchTerm.model}`.toLowerCase())) {
+                setCurrentJobResults({
+                  results: payload.new.num_results,
+                  volume: payload.new.volume,
+                  sellThrough: payload.new.sell_through_rate,
+                });
+              }
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('PartInfo subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to PartInfo table');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Error subscribing to PartInfo table');
+        }
+      });
+
+    subscriptions.push(partInfoChannel);
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      subscriptions.forEach((sub) => supabase.removeChannel(sub));
+    };
+  }, [currentJobId, carSearchResult]);
+
+  // Sync current job results when recentJobs updates
+  useEffect(() => {
+    if (currentJobId && currentJobStatus === 'completed') {
+      const currentJob = recentJobs.find(job => job.id === currentJobId);
+      if (currentJob && currentJob.num_results !== undefined) {
+        setCurrentJobResults({
+          results: currentJob.num_results,
+          volume: currentJob.volume,
+          sellThrough: currentJob.sell_through_rate,
+        });
+      }
+    }
+  }, [recentJobs, currentJobId, currentJobStatus]);
+
+  // Poll for current job status and update progress based on time elapsed
+  useEffect(() => {
+    if (!currentJobId || !searchStartTime || currentJobStatus === 'completed') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/jobs`);
+        const data = await response.json();
+
+        if (data.success && data.jobs) {
+          const currentJob = data.jobs.find(job => job.id === currentJobId);
+          if (currentJob) {
+            // Only update status if it changes, and don't override 'completed'
+            if (currentJob.status === 'completed') {
+              setCurrentJobStatus('completed');
+            } else if (currentJob.status === 'running' && currentJobStatus !== 'processing') {
+              setCurrentJobStatus('running');
+            } else if (currentJob.status === 'running' || currentJob.status === 'pending') {
+              const elapsed = Date.now() - searchStartTime;
+              // After 10 seconds of running, show "processing" stage
+              if (elapsed > 10000 && currentJobStatus !== 'processing') {
+                setCurrentJobStatus('processing');
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [currentJobId, searchStartTime, currentJobStatus]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -257,11 +407,100 @@ export default function Home() {
           {/* Car Search Result */}
           {searchType === 'car' && carSearchResult && (
             <div className="mt-6 p-6 bg-slate-700/50 border border-slate-600 rounded-xl">
-              <h3 className="text-xl font-semibold text-white mb-2">Search Created</h3>
-              <p className="text-slate-400 mb-4">Your search has been queued:</p>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                {currentJobStatus === 'completed' ? 'Search Complete' : 'Search In Progress'}
+              </h3>
+              <p className="text-slate-400 mb-4">
+                {currentJobStatus === 'pending' && 'Your search is being queued...'}
+                {currentJobStatus === 'running' && 'Initializing eBay scraper...'}
+                {currentJobStatus === 'processing' && 'Scraping listings and analyzing data...'}
+                {currentJobStatus === 'completed' && `Found ${currentJobResults?.results || '0'} results!`}
+                {!currentJobStatus && 'Your search has been queued:'}
+              </p>
               <p className="text-white font-medium mb-4">
                 "{carSearchResult.searchTerm}"
               </p>
+
+              {/* Progress Bar */}
+              {currentJobStatus && (
+                <div className="mb-4">
+                  <div className="w-full bg-slate-600 rounded-full h-3 mb-3">
+                    <div
+                      className={`h-3 rounded-full transition-all duration-700 ease-out ${
+                        currentJobStatus === 'pending'
+                          ? 'bg-yellow-500 w-1/5'
+                          : currentJobStatus === 'running'
+                          ? 'bg-blue-500 w-2/5'
+                          : currentJobStatus === 'processing'
+                          ? 'bg-purple-500 w-4/5'
+                          : currentJobStatus === 'completed'
+                          ? 'bg-green-500 w-full'
+                          : 'bg-red-500 w-full'
+                      }`}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-sm text-slate-400 mb-1">
+                    <span className="flex items-center gap-2">
+                      {currentJobStatus === 'pending' && <span>⏳ Queued</span>}
+                      {currentJobStatus === 'running' && <span>🚀 Starting</span>}
+                      {currentJobStatus === 'processing' && <span>🔍 Scraping</span>}
+                      {currentJobStatus === 'completed' && <span>✅ Complete</span>}
+                      {currentJobStatus === 'error' && <span>❌ Error</span>}
+                    </span>
+                    <span>
+                      {currentJobStatus === 'pending' && 'Waiting to start...'}
+                      {currentJobStatus === 'running' && 'Initializing...'}
+                      {currentJobStatus === 'processing' && 'Fetching listings...'}
+                      {currentJobStatus === 'completed' && 'Done!'}
+                    </span>
+                  </div>
+
+                  {/* Progress Steps */}
+                  <div className="flex items-center justify-between mt-4 text-xs">
+                    <div className={`flex flex-col items-center ${currentJobStatus === 'pending' || ['running', 'processing', 'completed'].includes(currentJobStatus!) ? 'text-white' : 'text-slate-500'}`}>
+                      <div className={`w-3 h-3 rounded-full mb-1 ${['pending', 'running', 'processing', 'completed'].includes(currentJobStatus!) ? 'bg-yellow-500' : 'bg-slate-600'}`}></div>
+                      <span>Queue</span>
+                    </div>
+                    <div className={`flex flex-col items-center ${['running', 'processing', 'completed'].includes(currentJobStatus!) ? 'text-white' : 'text-slate-500'}`}>
+                      <div className={`w-3 h-3 rounded-full mb-1 ${['running', 'processing', 'completed'].includes(currentJobStatus!) ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
+                      <span>Start</span>
+                    </div>
+                    <div className={`flex flex-col items-center ${['processing', 'completed'].includes(currentJobStatus!) ? 'text-white' : 'text-slate-500'}`}>
+                      <div className={`w-3 h-3 rounded-full mb-1 ${['processing', 'completed'].includes(currentJobStatus!) ? 'bg-purple-500' : 'bg-slate-600'}`}></div>
+                      <span>Scrape</span>
+                    </div>
+                    <div className={`flex flex-col items-center ${currentJobStatus === 'completed' ? 'text-white' : 'text-slate-500'}`}>
+                      <div className={`w-3 h-3 rounded-full mb-1 ${currentJobStatus === 'completed' ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                      <span>Done</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Results Summary */}
+              {currentJobStatus === 'completed' && currentJobResults && (
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {currentJobResults.results?.toLocaleString() || '-'}
+                    </div>
+                    <div className="text-xs text-slate-400">Results</div>
+                  </div>
+                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {currentJobResults.volume?.toLocaleString() || '-'}
+                    </div>
+                    <div className="text-xs text-slate-400">Volume</div>
+                  </div>
+                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-white">
+                      {currentJobResults.sellThrough ? `${currentJobResults.sellThrough.toFixed(1)}%` : '-'}
+                    </div>
+                    <div className="text-xs text-slate-400">Sell Through</div>
+                  </div>
+                </div>
+              )}
+
               <a
                 href={carSearchResult.ebayUrl}
                 target="_blank"
