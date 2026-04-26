@@ -187,12 +187,12 @@ export default function Home() {
           schema: 'public',
           table: 'jobs',
         },
-        async (payload) => {
+        async (payload: any) => {
           console.log('Jobs change detected:', payload);
           await fetchRecentJobs();
 
           // Check if this is our current job and update status
-          if (payload.event === 'UPDATE' && currentJobId && payload.new.id === currentJobId) {
+          if (payload.eventType === 'UPDATE' && currentJobId && payload.new.id === currentJobId) {
             const job = payload.new;
             setCurrentJobStatus(job.status);
             if (job.status === 'completed') {
@@ -223,12 +223,12 @@ export default function Home() {
           schema: 'public',
           table: 'PartInfo',
         },
-        async (payload) => {
+        async (payload: any) => {
           console.log('PartInfo change detected:', payload);
           await fetchRecentJobs();
 
           // Check if this PartInfo matches our current job
-          if (currentJobId && carSearchResult) {
+          if (currentJobId && carSearchResult && payload.new) {
             const searchTerm = extractPartInfo(carSearchResult.searchTerm);
             if (searchTerm && payload.new.name) {
               if (payload.new.name.toLowerCase().includes(`${searchTerm.year} ${searchTerm.make} ${searchTerm.model}`.toLowerCase())) {
@@ -265,9 +265,9 @@ export default function Home() {
       const currentJob = recentJobs.find(job => job.id === currentJobId);
       if (currentJob && currentJob.num_results !== undefined) {
         setCurrentJobResults({
-          results: currentJob.num_results,
-          volume: currentJob.volume,
-          sellThrough: currentJob.sell_through_rate,
+          results: currentJob.num_results ?? undefined,
+          volume: currentJob.volume ?? undefined,
+          sellThrough: currentJob.sell_through_rate ?? undefined,
         });
       }
     }
@@ -283,7 +283,7 @@ export default function Home() {
         const data = await response.json();
 
         if (data.success && data.jobs) {
-          const currentJob = data.jobs.find(job => job.id === currentJobId);
+          const currentJob = data.jobs.find((job: Job) => job.id === currentJobId);
           if (currentJob) {
             // Only update status if it changes, and don't override 'completed'
             if (currentJob.status === 'completed') {
